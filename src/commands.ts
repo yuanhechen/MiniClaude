@@ -1,0 +1,152 @@
+// 斜杠命令系统（移植 commands.py）+ welcome 横幅/logo。
+
+import { MODEL } from './config.js';
+import { SKILLS_REGISTRY } from './skills.js';
+import { saveSession, loadSession, listSessions } from './session.js';
+import { compactMediaMessages, compactOldToolResults } from './compaction.js';
+import type { CommittedItem, ContentBlock, MessageParam } from './types.js';
+
+// DeepAnalyze 实心 logo（DA）
+export const LOGO = [
+  '██████   █████',
+  '██   ██ ██   ██',
+  '██   ██ ███████',
+  '██   ██ ██   ██',
+  '██████  ██   ██',
+];
+
+export const COMMANDS = [
+  'help', 'clear', 'compact', 'tools', 'skills', 'model', 'history',
+  'perf', 'verbose', 'context', 'status', 'save', 'load', 'sessions', 'q',
+];
+
+export function parseCommand(text: string): { cmd: string; args: string[] } | null {
+  const t = text.trim();
+  if (!t.startsWith('/')) return null;
+  const parts = t.slice(1).split(/\s+/);
+  if (!parts[0]) return null;
+  return { cmd: parts[0].toLowerCase(), args: parts.slice(1) };
+}
+
+export interface CmdCtx {
+  showCtx: boolean;
+  showPerf: boolean;
+  showThinking: boolean;
+  toggleCtx: () => void;
+  togglePerf: () => void;
+  toggleThinking: () => void;
+  clearMessages: () => void;
+  getMessages: () => MessageParam[];
+  setMessages: (m: MessageParam[]) => void;
+}
+
+export interface CmdResult {
+  output?: string;
+  tone?: 'ok' | 'err' | 'warn' | 'muted';
+  exit?: boolean;
+}
+
+function textOf(content: unknown): string {
+  if (Array.isArray(content)) {
+    return (content as ContentBlock[]).filter(b => b.type === 'text').map(b => (b as { text: string }).text).join(' ');
+  }
+  return String(content ?? '');
+}
+
+export function handleCommand(cmd: string, args: string[], ctx: CmdCtx): CmdResult {
+  switch (cmd) {
+    case 'q':
+    case 'quit':
+    case 'exit':
+      return { exit: true };
+    case 'help':
+      return { output: '可用命令:  ' + COMMANDS.map(c => '/' + c).join('  '), tone: 'muted' };
+    case 'context':
+      ctx.toggleCtx();
+      return { output: 'context 状态栏: ' + (!ctx.showCtx ? '开启' : '关闭'), tone: 'ok' };
+    case 'perf':
+      ctx.togglePerf();
+      return { output: 'perf 状态栏: ' + (!ctx.showPerf ? '开启' : '关闭'), tone: 'ok' };
+    case 'verbose':
+      ctx.toggleThinking();
+      return { output: '思考内容: ' + (!ctx.showThinking ? '显示' : '折叠'), tone: 'ok' };
+    case 'clear':
+      ctx.clearMessages();
+      ctx.setMessages([]);
+      return { output: '✓ 已清空对话', tone: 'ok' };
+    case 'model':
+      return { output: '当前模型: ' + MODEL, tone: 'muted' };
+    case 'tools':
+      return { output: '可用工具: bash read write edit skill ask', tone: 'muted' };
+    case 'skills': {
+      if (!SKILLS_REGISTRY.size) return { output: '没有加载任何 skill', tone: 'muted' };
+      return {
+        output: '已加载 skills:\n' + [...SKILLS_REGISTRY.values()].map(s => `  ${s.name}: ${s.description}`).join('\n'),
+        tone: 'muted',
+      };
+    }
+    case 'history': {
+      const ms = ctx.getMessages();
+      if (!ms.length) return { output: '对话历史为空', tone: 'muted' };
+      const lines = [`对话历史 (${ms.length} 条):`];
+      ms.forEach((m, i) => {
+        let text = textOf(m.content).replace(/\n/g, ' ');
+        if (text.length > 60) text = text.slice(0, 57) + '...';
+        lines.push(`  [${i + 1}] ${m.role}: ${text}`);
+      });
+      return { output: lines.join('\n'), tone: 'muted' };
+    }
+    case 'compact': {
+      const ms = ctx.getMessages();
+      const before = ms.length;
+      const c1 = compactMediaMessages(ms);
+      const c2 = compactOldToolResults(ms);
+      return { output: `✓ 压缩完成: ${c1} 条媒体 + ${c2} 条旧工具结果（${before} → ${ms.length} 条）`, tone: 'ok' };
+    }
+    case 'save': {
+      const fp = saveSession(ctx.getMessages(), args.join(' ') || undefined);
+      return fp ? { output: '✓ 会话已保存: ' + fp, tone: 'ok' } : { output: '✗ 保存失败（无对话？）', tone: 'err' };
+    }
+    case 'sessions': {
+      const list = listSessions(20);
+      if (!list.length) return { output: '没有已保存的会话', tone: 'muted' };
+      const lines = list.map((s, i) => `  ${i + 1}. ${s.filename}${s.is_current ? ' (当前)' : ''} — ${s.name} (${s.message_count} 条)`);
+      return { output: '已保存会话:\n' + lines.join('\n'), tone: 'muted' };
+    }
+    case 'load': {
+      if (!args.length) {
+        const list = listSessions(10);
+        if (!list.length) return { output: '没有已保存的会话', tone: 'muted' };
+        const lines = list.map((s, i) => `  ${i + 1}. ${s.filename} — ${s.name}`);
+        return { output: '最近会话:\n' + lines.join('\n') + '\n用 /load <文件名或序号> 加载', tone: 'muted' };
+      }
+      let target = args[0];
+      if (/^\d+$/.test(target)) {
+        const list = listSessions(10);
+        const idx = parseInt(target, 10) - 1;
+        if (!list[idx]) return { output: '✗ 无效序号', tone: 'err' };
+        target = list[idx].filename;
+      }
+      const loaded = loadSession(target);
+      if (loaded) { ctx.setMessages(loaded); return { output: `✓ 已加载会话，共 ${loaded.length} 条消息`, tone: 'ok' }; }
+      return { output: '✗ 找不到会话: ' + target, tone: 'err' };
+    }
+    case 'status':
+      return { output: '用 /context 和 /perf 开关状态栏', tone: 'muted' };
+    default:
+      return { output: `未知命令: /${cmd}（输入 /help 查看）`, tone: 'err' };
+  }
+}
+
+export function getWelcomeItems(opts: { model: string; nTools: number; nSkills: number; cwd: string }): CommittedItem[] {
+  const info = [
+    'DeepAnalyze',
+    opts.model,
+    `${opts.nTools} tools` + (opts.nSkills ? ` · ${opts.nSkills} skill` : ''),
+    opts.cwd,
+    '/help · /load · q',
+  ];
+  const lines = LOGO.map((lg, i) => lg + '   ' + (info[i] ?? ''));
+  lines.push('');
+  return [{ kind: 'system', text: lines.join('\n') + '─'.repeat(60), tone: 'muted' }];
+}

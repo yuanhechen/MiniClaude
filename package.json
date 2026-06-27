@@ -1,0 +1,30 @@
+{
+  "name": "miniclaude",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18.19"
+  },
+  "scripts": {
+    "start": "tsx src/main.tsx",
+    "probe": "tsx src/scripts/probe.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.1",
+    "gray-matter": "^4.0.3",
+    "ink": "^5.0.1",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/react": "^18.3.0",
+    "ink-testing-library": "^4.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.6.0"
+  }
+}

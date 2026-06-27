@@ -1,0 +1,44 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+# 日志
+*.log
+npm-debug.log*
+
+# Python（历史，TS 重构后无用）
+*.pyc
+__pycache__/
+*.pyo
+
+# 环境 / 密钥
+.env
+.env.*
+!.env.example
+
+# 会话存储（运行时生成）
+.miniclaude/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时 / 用户文件
+tmp/
+2026gwyks.xlsx
+jubensha/
+
+# 测试素材（大文件 png/pdf/docx，本地保留不提交）
+read_tool_test/
+
+# skill 数据（pdf-converter-mineru 是独立 git repo，本地保留；运行时 loadSkills 读本地）
+skill/
